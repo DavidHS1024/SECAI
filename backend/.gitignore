@@ -1,0 +1,23 @@
+# --- Archivos de Seguridad (NUNCA SUBIR) ---
+.env
+.env.local
+config.py  # Opcional: Si decides no usarlo o tiene datos sensibles viejos
+
+# --- Archivos basura de Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Entornos Virtuales (si los usas) ---
+venv/
+.venv/
+env/
+
+# --- Archivos de sistema operativo ---
+.DS_Store
+Thumbs.db
+
+# --- Archivos de IDEs (opcional) ---
+.vscode/
+.idea/
