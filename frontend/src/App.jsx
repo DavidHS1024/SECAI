@@ -111,46 +111,43 @@ function App() {
       
       addLog(index, '📝', 'Investigador: Borrador de solución generado.', 'success');
 
-      // --- BUCLE DE MEJORA (AUDITORÍA -> REFINAMIENTO) ---
+// --- BUCLE DE MEJORA CONTINUA (AUTO-HEALING) ---
       let intentos = 0;
       let aprobado = false;
       let auditoriaFinal = null;
-      const MAX_INTENTOS = 2; // Limitamos a 2 vueltas para no hacer eterna la demo
+      const MAX_INTENTOS = 4; // Aumentamos intentos porque ahora tenemos espera automática
+      const SCORE_MINIMO = 95; // Exigencia de excelencia
 
       while (intentos < MAX_INTENTOS && !aprobado) {
         intentos++;
-        addLog(index, '🛡️', `Agente Auditor: Iniciando revisión de seguridad (Ciclo ${intentos}/${MAX_INTENTOS})...`, 'info');
+        addLog(index, '🛡️', `Auditor: Revisión de calidad (Ciclo ${intentos}/${MAX_INTENTOS})...`, 'info');
         
-        // Llamada al Auditor
+        // 2. AUDITORÍA
         const resAud = await axios.post('http://127.0.0.1:8000/api/auditoria', { 
           ticket, 
           solucion_detallada: currentSolucion.solucion_detallada 
         });
         auditoriaFinal = resAud.data;
 
-        // Evaluación del Score
-        if (auditoriaFinal.score >= 85) {
-          addLog(index, '✅', `AUDITOR: Solución APROBADA. Score de seguridad: ${auditoriaFinal.score}/100.`, 'success');
+        // Evaluación
+        if (auditoriaFinal.score >= SCORE_MINIMO) {
+          addLog(index, '✨', `AUDITOR: ¡EXCELENTE! Score: ${auditoriaFinal.score}/100. Aprobado.`, 'success');
           aprobado = true;
         } else {
-          addLog(index, '⚠️', `AUDITOR: Riesgos detectados (Score: ${auditoriaFinal.score}). Se requiere optimización.`, 'warning');
+          addLog(index, '⚠️', `Auditor: Rechazado (Score: ${auditoriaFinal.score}). Detectando fallos...`, 'warning');
           
-          // Mostrar riesgos críticos en el log
-          if (auditoriaFinal.riesgos_detectados?.length > 0) {
-             addLog(index, '🚩', `Crítico: ${auditoriaFinal.riesgos_detectados[0]}`, 'error');
-          }
-
           if (intentos < MAX_INTENTOS) {
-            addLog(index, '🔧', 'Ingeniero Principal: Aplicando parches y recomendaciones...', 'info');
+            // Mensaje de espera visual para el usuario
+            addLog(index, '⏳', 'Sistema: Optimizando solución con búsqueda adicional...', 'info');
             
-            // Llamada al Refinamiento
+            // 3. REFINAMIENTO (INGENIERO INVESTIGADOR)
             const resRef = await axios.post('http://127.0.0.1:8000/api/refinar', {
               ticket,
               solucion_anterior: currentSolucion.solucion_detallada,
               reporte_auditoria: auditoriaFinal
             });
-            currentSolucion = resRef.data; // Actualizamos la solución con la versión mejorada
-            addLog(index, 'DG', 'Ingeniero: Nueva versión desplegada para revisión.', 'info');
+            currentSolucion = resRef.data;
+            addLog(index, '🚀', 'Ingeniero: Nueva versión v' + (intentos + 1) + ' generada.', 'success');
           }
         }
       }
@@ -198,65 +195,111 @@ function App() {
     }
   };
 
-  const generarPDF = () => {
+const generarPDF = () => {
     if (!modalData) return;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ format: 'a4' }); // Forzar formato A4
     const { ticket, investigacion, auditoria } = modalData;
     
-    // Configuración PDF
+    let yPos = 20;
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 20;
+    const maxWidth = 170;
+
+    // Función auxiliar para saltar página si falta espacio
+    const checkPageBreak = (addY) => {
+      if (yPos + addY > pageHeight - margin) {
+        doc.addPage();
+        yPos = margin;
+      }
+    };
+
+    // Título
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
-    doc.text("Informe Técnico SECAI", 20, 20);
+    doc.text("Informe Técnico SECAI", margin, yPos);
+    yPos += 10;
     
+    // Info del Ticket
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
-    doc.text(`Ticket: ${ticket.titulo}`, 20, 30);
-    doc.text(`Prioridad: ${ticket.prioridad}`, 20, 36);
+    doc.text(`Ticket: ${ticket.titulo}`, margin, yPos);
+    yPos += 6;
+    doc.text(`Prioridad: ${ticket.prioridad} | Tipo: ${ticket.tipo}`, margin, yPos);
+    yPos += 10;
 
+    // Resultado de Auditoría (Si existe)
     if (auditoria) {
-      doc.setTextColor(auditoria.estado === 'APROBADO' ? 'green' : auditoria.estado === 'OBSERVADO' ? '#D4AC0D' : 'red');
-      doc.text(`AUDITORÍA: ${auditoria.estado} (Score: ${auditoria.score})`, 20, 42);
-      doc.setTextColor('black');
+      doc.setFont("helvetica", "bold");
+      const color = auditoria.estado === 'APROBADO' ? [0, 128, 0] : [200, 0, 0];
+      doc.setTextColor(...color);
+      doc.text(`DICTAMEN AUDITORÍA: ${auditoria.estado} (Score: ${auditoria.score}/100)`, margin, yPos);
+      doc.setTextColor(0); // Reset a negro
+      yPos += 10;
     }
-    
+
     doc.setLineWidth(0.5);
-    doc.line(20, 48, 190, 48);
+    doc.line(margin, yPos, 210 - margin, yPos);
+    yPos += 10;
     
+    // Contenido Técnico
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text("Solución Técnica Detallada:", 20, 58);
+    doc.text("Solución Técnica Detallada:", margin, yPos);
+    yPos += 8;
     
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     
-    // Limpieza de markdown para PDF
-    const cleanText = investigacion.solucion_detallada.replace(/\*\*/g, "").replace(/###/g, "").replace(/-/g, "•");
-    const splitText = doc.splitTextToSize(cleanText, 170);
-    doc.text(splitText, 20, 65);
+    // Limpieza de Markdown para texto plano
+    const rawText = investigacion.solucion_detallada || "Sin detalle.";
+    const cleanText = rawText
+      .replace(/###/g, "")      // Quitar títulos MD
+      .replace(/\*\*/g, "")     // Quitar negritas MD
+      .replace(/- /g, "• ")     // Listas bonitas
+      .replace(/`/g, "");       // Quitar backticks
+      
+    // Dividir texto en líneas para ajustar al ancho
+    const textLines = doc.splitTextToSize(cleanText, maxWidth);
     
-    // Paginación y Fuentes
-    let yPos = 65 + (splitText.length * 5) + 10;
-    if (yPos > 250) { doc.addPage(); yPos = 20; }
+    // Escribir línea por línea controlando paginación
+    textLines.forEach(line => {
+      checkPageBreak(5);
+      doc.text(line, margin, yPos);
+      yPos += 5;
+    });
     
-    if (investigacion.fuentes?.length > 0) {
+    yPos += 10;
+    
+    // Fuentes / Referencias
+    checkPageBreak(20);
+    if (investigacion.fuentes && investigacion.fuentes.length > 0) {
       doc.setFont("helvetica", "bold");
-      doc.text("Referencias y Fuentes:", 20, yPos);
+      doc.text("Referencias y Fuentes:", margin, yPos);
       yPos += 8;
+      
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(0, 0, 255);
+      doc.setTextColor(0, 0, 255); // Azul link
       
       investigacion.fuentes.forEach((f) => {
-        doc.textWithLink(`• ${f.titulo || "Enlace externo"}`, 20, yPos, { url: f.url || "#" });
+        checkPageBreak(6);
+        const linkTitle = `• ${f.titulo || "Enlace externo"}`;
+        doc.textWithLink(linkTitle, margin, yPos, { url: f.url || "#" });
         yPos += 6;
       });
     }
     
-    doc.save(`SECAI_Reporte_${ticket.titulo.substring(0, 10)}.pdf`);
+    // Guardar archivo
+    doc.save(`SECAI_Reporte_${ticket.titulo.substring(0, 10).replace(/\s/g, '_')}.pdf`);
   };
 
   // Helpers de Estilo
   const getBorderColor = (p) => (p?.toLowerCase() === 'alta' ? 'border-l-orange-500' : p?.toLowerCase() === 'media' ? 'border-l-yellow-500' : 'border-l-green-500');
-  const getBadgeColor = (p) => (p?.toLowerCase() === 'alta' ? 'text-orange-400 bg-orange-500/10 border-orange-500/30' : p?.toLowerCase() === 'media' ? 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30' : 'text-green-400 bg-green-500/10 border-green-500/30');
+  const getBadgeColor = (p) => {
+      const prio = p?.toLowerCase() || 'media';
+      if (prio === 'alta') return 'text-orange-400 bg-orange-950/30 border border-orange-500/60 shadow-[0_0_8px_rgba(251,146,60,0.3)]';
+      if (prio === 'media') return 'text-yellow-400 bg-yellow-950/30 border border-yellow-500/60';
+      return 'text-green-400 bg-green-950/30 border border-green-500/60';
+    };
   const getAuditColor = (s) => (s === 'APROBADO' ? 'text-green-400 border-green-500/30 bg-green-500/10' : s === 'OBSERVADO' ? 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10' : 'text-red-400 border-red-500/30 bg-red-500/10');
 
 

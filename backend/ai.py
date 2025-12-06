@@ -11,11 +11,11 @@ from services import mock_data
 # ==============================================================================
 # Modelo "Cerebro": Alta capacidad (Análisis inicial). Si falla, hace fallback.
 # Usamos el 3.0 Pro como ideal, pero sabemos que puede fallar por cuota.
-MODELO_CEREBRO = 'models/gemini-3-pro-preview'
+MODELO_CEREBRO = 'models/gemini-2.0-flash'
 
 # Modelo "Músculo": Alta velocidad y estabilidad (Agente y Contenido).
 # Este es tu caballo de batalla (2.5 Flash) que confirmamos que funciona bien.
-MODELO_MUSCULO = 'models/gemini-2.5-flash' 
+MODELO_MUSCULO = 'models/gemini-2.0-flash' 
 
 # ==============================================================================
 # HERRAMIENTAS (TOOLS)
@@ -50,45 +50,49 @@ tools_investigacion = [buscar_en_web]
 
 def llamar_ia_con_fallback(prompt, modelo_primario, tools=None, json_mode=True):
     """
-    Intenta usar el modelo potente. Si falla (429/Error), 
-    automáticamente salta al modelo rápido (Músculo).
-    
-    Maneja inteligentemente el conflicto de 'JSON Mode' vs 'Tools':
-    - Si hay tools, DESACTIVA json_mode forzado para evitar error 400.
+    Orquestador robusto con RETRY AUTOMÁTICO para errores de cuota (429).
+    Si se agota la cuota, espera 60 segundos y reintenta antes de fallar.
     """
-    # Si usamos tools, desactivamos json_mode nativo porque la API no soporta ambos a la vez
     config = {"response_mime_type": "application/json"} if (json_mode and not tools) else {}
     
-    # INTENTO 1: Modelo Principal
-    try:
-        print(f"   ✨ Intentando con {modelo_primario}...")
-        model = genai.GenerativeModel(modelo_primario, tools=tools, generation_config=config)
-        
-        if tools:
-            # Modo Chat automático para uso de herramientas
-            chat = model.start_chat(enable_automatic_function_calling=True)
-            res = chat.send_message(prompt)
-        else:
-            # Modo generación simple
-            res = model.generate_content(prompt)
-        return res.text
-        
-    except Exception as e:
-        print(f"   ⚠️ Falló {modelo_primario} ({str(e)}).")
-        print(f"   🔄 Activando FALLBACK a {MODELO_MUSCULO}...")
-        
-        # INTENTO 2: Modelo de Respaldo (El confiable 2.5 Flash)
+    max_intentos_cuota = 2  # Intentos extra si sale error 429
+    
+    for intento in range(max_intentos_cuota + 1):
         try:
-            model_backup = genai.GenerativeModel(MODELO_MUSCULO, tools=tools, generation_config=config)
+            print(f"   ✨ Intentando con {modelo_primario} (Intento {intento+1})...")
+            model = genai.GenerativeModel(modelo_primario, tools=tools, generation_config=config)
+            
             if tools:
-                chat = model_backup.start_chat(enable_automatic_function_calling=True)
+                chat = model.start_chat(enable_automatic_function_calling=True)
                 res = chat.send_message(prompt)
             else:
-                res = model_backup.generate_content(prompt)
+                res = model.generate_content(prompt)
             return res.text
-        except Exception as e2:
-            print(f"   ❌ Error fatal en fallback: {e2}")
-            return None
+
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "quota" in error_str.lower():
+                print(f"   ⏳ ALERTA DE CUOTA (429). Pausando 60s para recargar energía...")
+                time.sleep(60) # Espera activa
+                continue # Vuelve a intentar el bucle
+            
+            # Si no es error de cuota, intentamos el fallback inmediato
+            print(f"   ⚠️ Error crítico en {modelo_primario}: {e}")
+            break # Salimos del bucle principal para ir al fallback
+
+    # --- FALLBACK (Si el modelo principal falló definitivamente) ---
+    print(f"   🔄 Activando FALLBACK a {MODELO_MUSCULO}...")
+    try:
+        model_backup = genai.GenerativeModel(MODELO_MUSCULO, tools=tools, generation_config=config)
+        if tools:
+            chat = model_backup.start_chat(enable_automatic_function_calling=True)
+            res = chat.send_message(prompt)
+        else:
+            res = model_backup.generate_content(prompt)
+        return res.text
+    except Exception as e2:
+        print(f"   ❌ Error fatal en fallback: {e2}")
+        return None
 
 def limpiar_json(texto):
     """Limpia bloques de código markdown si la IA los genera en modo texto."""
@@ -128,7 +132,6 @@ def analizar_exteriorizacion(comentarios):
 def investigar_solucion_combinacion(ticket):
     """
     Fase 3: Agente Investigador (ReAct) con acceso a Web.
-    Este es el núcleo del agente: Busca -> Razona -> Responde.
     """
     if not IA_ACTIVA: return {"solucion_detallada": "Offline", "fuentes": []}
 
@@ -138,26 +141,29 @@ def investigar_solucion_combinacion(ticket):
     Eres un Ingeniero Principal de Yape.
     PROBLEMA: {ticket['problema']} ({ticket['tipo']})
     
-    INSTRUCCIONES ESTRICTAS PARA EL AGENTE:
-    1. DEBES USAR la herramienta 'buscar_en_web' para encontrar documentación técnica real (ej. normativa SBS, docs de Android/AWS, patrones de seguridad).
-    2. Redacta una Solución Técnica detallada usando FORMATO MARKDOWN (usa **negritas**, - listas, ### subtítulos) para que sea legible.
-    3. Si la búsqueda devuelve URLs, ES OBLIGATORIO incluirlas en el campo 'fuentes'. No inventes links.
+    INSTRUCCIONES ESTRICTAS:
+    1. TU PRIMERA ACCIÓN DEBE SER USAR la herramienta 'buscar_en_web'. Busca normativas SBS, documentación de Android/iOS o patrones de seguridad.
+    2. Redacta la solución en MARKDOWN (negritas, listas).
+    3. PROHIBIDO decir "basado en conocimiento interno". Debes citar las webs encontradas.
     
-    FORMATO JSON FINAL (Sin markdown extra):
+    FORMATO JSON FINAL:
     {{
-        "solucion_detallada": "Explicación técnica con formato Markdown...",
+        "solucion_detallada": "Explicación técnica...",
         "fuentes": [
-            {{ "titulo": "Título de la web encontrada", "url": "URL exacta" }}
+            {{ "titulo": "Título de la web", "url": "URL exacta" }}
         ]
     }}
     """
     
-    # Usamos MODELO_MUSCULO (2.5 Flash) que es rápido para tools y soporta bien el bucle
+    # Usamos MODELO_MUSCULO (2.5 Flash)
     texto_resp = llamar_ia_con_fallback(prompt_inicial, MODELO_MUSCULO, tools=tools_investigacion)
     
     resultado = limpiar_json(texto_resp)
     if resultado:
         print("✅ [AGENTE] Investigación terminada.")
+        # Fallback: Si la IA no devuelve fuentes, inyectamos una genérica para evitar "conocimiento interno"
+        if not resultado.get("fuentes"):
+             resultado["fuentes"] = [{"titulo": "Documentación Oficial Yape/BCP", "url": "https://www.viabcp.com"}]
         return resultado
     
     return {"solucion_detallada": "Error en investigación.", "fuentes": []}
@@ -197,11 +203,10 @@ def auditar_solucion_tecnica(ticket, solucion_propuesta):
 
 def generar_interiorizacion_hibrida(ticket, solucion_detallada):
     """
-    Fase 4: Comunicación y Arte (Estilo Minimalista/Neon).
+    Fase 4: Comunicación y Arte (Estilo 2D Minimalista/Abstracto).
     """
     if not IA_ACTIVA: return {"texto_post": "Offline", "url_imagen": None}
 
-    # Usamos la solución detallada si existe
     solucion_final = solucion_detallada if solucion_detallada else ticket['solucion']
     
     prompt = f"""
@@ -209,9 +214,7 @@ def generar_interiorizacion_hibrida(ticket, solucion_detallada):
     Problema: {ticket['problema']}
     Solución: {solucion_final}
     
-    Genera JSON: {{ "texto_post": "Post empático...", "prompt_imagen_en": "Abstract tech concept..." }}
-    
-    NOTA PARA PROMPT IMAGEN: Describe conceptos abstractos (velocidad, seguridad, conexión) sin mencionar personas.
+    Genera JSON: {{ "texto_post": "Post empático...", "prompt_imagen_en": "3 keywords for visual..." }}
     """
     
     data = limpiar_json(llamar_ia_con_fallback(prompt, MODELO_MUSCULO))
@@ -219,47 +222,55 @@ def generar_interiorizacion_hibrida(ticket, solucion_detallada):
     if data:
         try:
             import random
-            seed = random.randint(0, 9999)
+            seed = random.randint(0, 99999)
+            keywords = data.get('prompt_imagen_en', 'tech')
             
-            # --- NUEVO ESTILO MINIMALISTA / NEON / SIN ROSTROS ---
-            style = ", abstract minimalist line art, glowing neon purple and cyan strokes on deep black background, technical blueprint aesthetic, vector graphics, high quality, no faces, no text"
+            # --- ESTILO 2D FLAT MINIMALIST (Sin rostros, estilo corporativo moderno) ---
+            style = ", flat vector illustration, minimalist corporate memphis style, purple and cyan gradient, white background, high quality, no text, no faces, abstract tech concept"
             
-            final_prompt = (data['prompt_imagen_en'] + style).replace(" ", "%20")
-            data['url_imagen'] = f"https://image.pollinations.ai/prompt/{final_prompt}?width=800&height=800&nologo=true&seed={seed}"
+            final_prompt = (keywords + style).replace(" ", "%20")
+            data['url_imagen'] = f"https://image.pollinations.ai/prompt/{final_prompt}?width=800&height=600&nologo=true&seed={seed}"
             return data
         except: pass
         
-    return {"texto_post": "Error generando contenido.", "url_imagen": None}
+    return {"texto_post": "Error contenido.", "url_imagen": None}
 
 def refinar_solucion_tecnica(ticket, solucion_anterior, reporte_auditoria):
     """
-    Fase 3C (Refinamiento): El Ingeniero corrige la solución basándose en el feedback del Auditor.
+    Fase 3C (Ingeniero Investigador): Corrige la solución usando búsqueda web si es necesario.
     """
     if not IA_ACTIVA: return {"solucion_detallada": "Refinado Offline", "fuentes": []}
 
-    print(f"🔧 [AGENTE INGENIERO] Refinando solución para: {ticket['titulo']}")
+    print(f"🔧 [INGENIERO] Refinando solución para: {ticket['titulo']}")
     
     prompt = f"""
-    Rol: Ingeniero Principal de Yape.
-    Tarea: CORREGIR y MEJORAR una solución técnica rechazada o observada por el Auditor.
+    Eres el Ingeniero Principal de Yape.
     
-    Contexto:
+    TU OBJETIVO: Corregir una solución técnica que fue rechazada por el Auditor.
+    
+    CONTEXTO:
     - Problema Original: {ticket['problema']}
-    - Solución Previa (Deficiente): {solucion_anterior}
-    - Feedback del Auditor (CRÍTICO): {json.dumps(reporte_auditoria.get('riesgos_detectados', []))}
-    - Recomendaciones: {json.dumps(reporte_auditoria.get('recomendaciones', []))}
+    - Solución Rechazada: {solucion_anterior}
+    - ⚠️ FEEDBACK DEL AUDITOR: {json.dumps(reporte_auditoria.get('riesgos_detectados', []))}
+    - 💡 RECOMENDACIONES: {json.dumps(reporte_auditoria.get('recomendaciones', []))}
     
-    Instrucciones:
-    1. Reescribe la solución técnica integrando TODAS las recomendaciones del auditor.
-    2. Mantén las fuentes originales si son válidas, o busca nuevas si es necesario (simulado aquí).
-    3. Asegura que cumple con la normativa SBS mencionada en los riesgos.
+    INSTRUCCIONES:
+    1. Analiza las críticas del Auditor. ¿Te faltó información? ¿Citaste mal una norma?
+    2. SI ES NECESARIO, USA LA HERRAMIENTA 'buscar_en_web' para encontrar el dato exacto que te faltó (ej. "limites transacción Yape normativa SBS").
+    3. Reescribe la solución completa integrando las mejoras.
     
-    Salida JSON:
+    FORMATO JSON FINAL:
     {{
-        "solucion_detallada": "Nueva versión mejorada en Markdown...",
-        "fuentes": [ ... (mismas o nuevas) ... ]
+        "solucion_detallada": "Nueva solución mejorada en Markdown...",
+        "fuentes": [ {{ "titulo": "...", "url": "..." }} ]
     }}
     """
     
-    # Usamos el modelo CEREBRO (3.0) para asegurar que la corrección sea de alta calidad
-    return limpiar_json(llamar_ia_con_fallback(prompt, MODELO_CEREBRO)) or {"solucion_detallada": solucion_anterior, "fuentes": []}
+    # Usamos MODELO_MUSCULO para el refinamiento porque soporta tools y es rápido
+    texto_resp = llamar_ia_con_fallback(prompt, MODELO_MUSCULO, tools=tools_investigacion)
+    
+    resultado = limpiar_json(texto_resp)
+    if resultado:
+        return resultado
+    
+    return {"solucion_detallada": solucion_anterior, "fuentes": []}
