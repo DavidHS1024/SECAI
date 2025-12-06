@@ -59,13 +59,29 @@ def api_analizar_exteriorizacion(request: ComentariosRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 # 3. Endpoint de Combinación/Internalización
+class AprobacionRequest(BaseModel):
+    ticket: Dict[str, Any]
+    solucion_detallada: str
+
 @app.post("/api/combinacion")
-def api_generar_post(ticket: Dict[str, Any]):
-    print("📢 Generando post de roadmap...")
+def api_generar_post(data: AprobacionRequest):
+    print("📢 Generando post final...")
     try:
-        # Tu función espera un diccionario con los datos del ticket
-        resultado = generar_interiorizacion_hibrida(ticket)
+        from ai import generar_interiorizacion_hibrida
+        resultado = generar_interiorizacion_hibrida(data.ticket, data.solucion_detallada)
         return resultado
     except Exception as e:
-        print(f"Error Generación: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+# Endpoint para la Fase 3 (Investigación)
+@app.post("/api/investigacion")
+def api_investigar_solucion(ticket: Dict[str, Any]):
+    print(f"🔍 Investigando solución para: {ticket.get('titulo')}")
+    try:
+        # Llamamos a la nueva función de ai.py
+        from ai import investigar_solucion_combinacion
+        resultado = investigar_solucion_combinacion(ticket)
+        return resultado
+    except Exception as e:
+        print(f"Error Investigando: {e}")
         raise HTTPException(status_code=500, detail=str(e))

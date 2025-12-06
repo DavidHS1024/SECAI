@@ -1,3 +1,35 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* --- SCROLLBAR MODERNO (Estilo Dark Mode) --- */
+
+/* 1. El riel (track) */
+::-webkit-scrollbar {
+  width: 10px;               /* Ancho vertical */
+  height: 10px;              /* Alto horizontal */
+}
+
+/* 2. El fondo del riel */
+::-webkit-scrollbar-track {
+  background: #020617;       /* Mismo color que el fondo de tu App */
+  border-left: 1px solid #1e293b; /* Un borde sutil para separarlo (opcional) */
+}
+
+/* 3. La barra que se mueve (thumb) */
+::-webkit-scrollbar-thumb {
+  background: #334155;       /* Slate-700: Gris azulado oscuro */
+  border-radius: 99px;       /* Bordes totalmente redondos */
+  border: 2px solid #020617; /* Borde del mismo color del fondo para dar efecto de "flotante" */
+}
+
+/* 4. Al pasar el mouse por encima */
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;       /* Slate-600: Un poco más claro al interactuar */
+}
+
+/* 5. Firefox (Usa otra sintaxis) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 #020617;
+}
