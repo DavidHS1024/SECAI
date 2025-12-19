@@ -6,4 +6,7 @@
 
 > **S**ocialization, **E**xternalization, **C**ombination, **A**rtificial **I**ntelligence.
 > Sistema inteligente que transforma el feedback de usuarios en conocimiento técnico y comunicacional.
+
+INICIAR BACKEND  : python -m uvicorn main:app --reload
+INICIAR FRONTEND : npm run dev
 ---

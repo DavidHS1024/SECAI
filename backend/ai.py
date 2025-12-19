@@ -11,11 +11,11 @@ from services import mock_data
 # ==============================================================================
 # Modelo "Cerebro": Alta capacidad (Análisis inicial). Si falla, hace fallback.
 # Usamos el 3.0 Pro como ideal, pero sabemos que puede fallar por cuota.
-MODELO_CEREBRO = 'models/gemini-2.0-flash'
+MODELO_CEREBRO = 'models/gemini-flash-latest'
 
 # Modelo "Músculo": Alta velocidad y estabilidad (Agente y Contenido).
 # Este es tu caballo de batalla (2.5 Flash) que confirmamos que funciona bien.
-MODELO_MUSCULO = 'models/gemini-2.0-flash' 
+MODELO_MUSCULO = 'models/gemini-flash-latest' 
 
 # ==============================================================================
 # HERRAMIENTAS (TOOLS)
@@ -193,9 +193,9 @@ def auditar_solucion_tecnica(ticket, solucion_propuesta):
     {{
         "estado": "APROBADO" | "OBSERVADO" | "RECHAZADO",
         "score": (0-100),
-        "analisis_breve": "Resumen ejecutivo...",
-        "riesgos_detectados": ["Riesgo 1...", "Riesgo 2..."],
-        "recomendaciones": ["Mejora 1...", "Mejora 2..."]
+        "analisis_breve": "Resumen de 1 linea.",
+        "riesgos_detectados": ["Riesgo clave 1", "Riesgo clave 2"],
+        "recomendaciones": ["Mejora clave 1"]
     }}
     """
     # Usamos el modelo CEREBRO para máxima capacidad crítica

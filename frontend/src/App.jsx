@@ -99,7 +99,7 @@ function App() {
   const runAutonomousAgents = async (ticket, index) => {
     // 1. Inicialización
     setAgentState(prev => ({ ...prev, [index]: 'WORKING' }));
-    setAgentLogs(prev => ({ ...prev, [index]: [] })); // Limpiar logs anteriores
+    setAgentLogs(prev => ({ ...prev, [index]: [] }));
     
     try {
       // --- PASO 1: AGENTE INVESTIGADOR ---
@@ -115,8 +115,8 @@ function App() {
       let intentos = 0;
       let aprobado = false;
       let auditoriaFinal = null;
-      const MAX_INTENTOS = 4; // Aumentamos intentos porque ahora tenemos espera automática
-      const SCORE_MINIMO = 95; // Exigencia de excelencia
+      const MAX_INTENTOS = 5;
+      const SCORE_MINIMO = 85;
 
       while (intentos < MAX_INTENTOS && !aprobado) {
         intentos++;
