@@ -10,9 +10,9 @@ from services import mock_data
 # ==============================================================================
 # CONFIGURACIÓN DE MODELOS
 # ==============================================================================
-# Usamos gpt-4o para que el bucle sea rápido (10-15s) durante la demo.
-MODELO_RAZONAMIENTO = 'gpt-4o' 
-MODELO_RAPIDO = 'gpt-4o-mini'
+
+MODELO_RAZONAMIENTO = 'gpt-5.2'
+MODELO_RAPIDO = 'gpt-4o-mini' 
 
 # ==============================================================================
 # ESQUEMAS DE DATOS
@@ -117,8 +117,9 @@ def analizar_exteriorizacion(comentarios_raw):
     REGLAS: 'fuentes_ids' exactos, 'tags' técnicos, justificación clara.
     """
     try:
+        # Usamos GPT-4o para esta fase (clasificación rápida)
         completion = client.beta.chat.completions.parse(
-            model=MODELO_RAZONAMIENTO,
+            model='gpt-4o', 
             messages=[{"role": "user", "content": prompt}],
             response_format=ReporteExteriorizacion,
         )
@@ -127,73 +128,97 @@ def analizar_exteriorizacion(comentarios_raw):
         print(f"❌ Error Fase 2: {e}")
         return []
 
-# --- HELPERS PARA GENERACIÓN DE PROMPTS ---
+# --- HELPERS PARA GENERACIÓN DE PROMPTS (MODO DETALLADO) ---
 
 def _crear_prompt_generacion(ticket, contexto_web):
     return f"""
-    Actúa como Staff Engineer.
-    PROBLEMA: {ticket['problema']}
-    RAZONAMIENTO: {ticket['razonamiento']}
-    CONTEXTO WEB: {contexto_web}
+    Actúa como Staff Software Engineer experto en Arquitectura de Alta Disponibilidad y Fintech.
     
-    TAREA: Diseña una solución técnica definitiva.
-    REGLA DE FORMATO: 
-    - Markdown limpio, listas, negritas y bloques de código.
-    - NO uses encabezados gigantes (#), usa negritas para subtítulos.
+    PROBLEMA A RESOLVER: {ticket['problema']}
+    RAZONAMIENTO PREVIO: {ticket['razonamiento']}
+    CONTEXTO WEB INVESTIGADO: {contexto_web}
     
-    FUENTES BIBLIOGRÁFICAS:
-    - Incluye SOLO links reales del contexto web. Si no hay, deja la lista vacía.
+    TAREA:
+    Escribe un Documento de Diseño Técnico (TDD) exhaustivo y detallado para implementar esta solución en Yape.
+    NO seas breve. Profundiza en cada sección.
+    
+    ESTRUCTURA OBLIGATORIA DEL REPORTE (Usa Markdown):
+    
+    1.  **Análisis de Causa Raíz (RCA) Profundo:**
+        * Explica técnicamente por qué ocurre el problema actual.
+        * Analiza el impacto en la base de datos y la latencia.
+        * Menciona riesgos de seguridad si no se arregla.
+
+    2.  **Solución Técnica Detallada (The "How"):**
+        * **Arquitectura:** Describe los microservicios involucrados.
+        * **Flujo de Datos:** Paso a paso de la petición (Request/Response).
+        * **Cambios en Base de Datos:** Propón esquemas (tablas, índices) o modelos JSON.
+        * **Integración:** Cómo se comunica con servicios legacy (si aplica).
+        * **Código:** Incluye bloques de código (Python/Node/SQL) reales, extensos y comentados para la lógica core.
+
+    3.  **Plan de Rollback y Contingencia:**
+        * Estrategia de despliegue (Canary, Blue/Green).
+        * Indicadores (KPIs) de fallo.
+        * Script o pasos exactos para revertir el cambio en menos de 5 minutos.
+
+    4.  **Consideraciones de Seguridad (OWASP & Compliance):**
+        * Validación de inputs.
+        * Manejo de tokens y sesiones.
+        * Cumplimiento de normativa SBS (Perú).
+
+    FUENTES:
+    - Usa estrictamente los links provistos en el contexto web. Si no hay, cita documentación estándar oficial.
     """
 
 def _crear_prompt_auditoria(ticket, solucion_obj):
     return f"""
-    Actúa como Auditor CISA/CISSP.
+    Actúa como Auditor CISA/CISSP Senior.
     PROBLEMA: {ticket['problema']}
-    SOLUCIÓN: {solucion_obj.model_dump_json()}
+    SOLUCIÓN PROPUESTA: {solucion_obj.model_dump_json()}
     
-    CRITERIO (Min 90/100): Penaliza si es vago o inseguro.
-    TAREA: Evalúa y da puntaje.
+    CRITERIO (Min 90/100): 
+    - Penaliza FUERTEMENTE si la solución es superficial o corta.
+    - Penaliza si falta código real o pasos de rollback claros.
+    
+    TAREA: Evalúa críticamente y da un puntaje estricto.
     """
 
 def _crear_prompt_refinamiento(solucion_ant, auditoria):
     return f"""
     Actúa como Tech Lead.
-    SITUACIÓN: Rechazada (Score: {auditoria.score}).
+    SITUACIÓN: Solución rechazada (Score: {auditoria.score}).
     CRÍTICAS: {json.dumps(auditoria.riesgos_detectados)}
-    TAREA: Corrige la solución.
+    
+    TAREA: Reescribe la solución corrigiendo los fallos y EXPANDIENDO la explicación técnica.
     """
 
 # --- GENERADOR MAESTRO CON STREAMING CORREGIDO (\n) ---
 
 def investigar_solucion_stream(ticket: Dict) -> Generator[str, None, None]:
-    # IMPORTANTE: El backend debe devolver un generador SINCRONO o ASINCRONO
-    # FastAPI maneja ambos, pero aquí usaremos yield estándar.
-    
     if not IA_ACTIVA:
-        # \n es VITAL para que el frontend detecte el fin del mensaje
         yield json.dumps({"type": "error", "message": "IA Offline"}) + "\n"
         return
 
     # 1. Búsqueda
-    yield json.dumps({"type": "log", "emoji": "🌐", "message": "Iniciando búsqueda en Google...", "level": "info"}) + "\n"
-    contexto_web = buscar_en_web(f"solucion tecnica {ticket['problema']} github stackoverflow")
+    yield json.dumps({"type": "log", "emoji": "🌐", "message": "Iniciando búsqueda profunda en Google...", "level": "info"}) + "\n"
+    contexto_web = buscar_en_web(f"solucion tecnica {ticket['problema']} github stackoverflow documentation")
     yield json.dumps({"type": "log", "emoji": "✅", "message": "Contexto web obtenido.", "level": "success"}) + "\n"
 
     solucion_actual = None
     ultimo_score = 0
     intentos = 0
-    MAX_INTENTOS = 2 # Reducimos intentos para agilidad en demo
+    MAX_INTENTOS = 2 
     SCORE_OBJETIVO = 90
     auditoria_final = None
 
     try:
         while intentos < MAX_INTENTOS:
             intentos += 1
-            yield json.dumps({"type": "log", "emoji": "🔄", "message": f"Ciclo de Ingeniería {intentos}/{MAX_INTENTOS}...", "level": "info"}) + "\n"
+            yield json.dumps({"type": "log", "emoji": "🔄", "message": f"Ciclo de Ingeniería {intentos}/{MAX_INTENTOS} (GPT-5.2)...", "level": "info"}) + "\n"
 
             # A. GENERACIÓN / REFINAMIENTO
             if intentos == 1:
-                yield json.dumps({"type": "log", "emoji": "🏗️", "message": "Diseñando arquitectura (GPT-4o)...", "level": "warning"}) + "\n"
+                yield json.dumps({"type": "log", "emoji": "🏗️", "message": "Arquitecto Senior diseñando solución detallada...", "level": "warning"}) + "\n"
                 
                 completion = client.beta.chat.completions.parse(
                     model=MODELO_RAZONAMIENTO,
@@ -201,10 +226,10 @@ def investigar_solucion_stream(ticket: Dict) -> Generator[str, None, None]:
                     response_format=SolucionTecnica,
                 )
                 solucion_actual = completion.choices[0].message.parsed
-                yield json.dumps({"type": "log", "emoji": "📝", "message": "Diseño inicial completado.", "level": "success"}) + "\n"
+                yield json.dumps({"type": "log", "emoji": "📝", "message": "Diseño técnico completado.", "level": "success"}) + "\n"
 
             else:
-                yield json.dumps({"type": "log", "emoji": "🔧", "message": "Aplicando parches de seguridad...", "level": "warning"}) + "\n"
+                yield json.dumps({"type": "log", "emoji": "🔧", "message": "Aplicando parches y expandiendo documentación...", "level": "warning"}) + "\n"
                 completion = client.beta.chat.completions.parse(
                     model=MODELO_RAZONAMIENTO,
                     messages=[{"role": "user", "content": _crear_prompt_refinamiento(solucion_actual, auditoria_final)}],
@@ -213,7 +238,7 @@ def investigar_solucion_stream(ticket: Dict) -> Generator[str, None, None]:
                 solucion_actual = completion.choices[0].message.parsed
 
             # B. AUDITORÍA
-            yield json.dumps({"type": "log", "emoji": "⚖️", "message": "Auditando calidad...", "level": "info"}) + "\n"
+            yield json.dumps({"type": "log", "emoji": "⚖️", "message": "Auditando calidad y seguridad...", "level": "info"}) + "\n"
             completion = client.beta.chat.completions.parse(
                 model=MODELO_RAZONAMIENTO,
                 messages=[{"role": "user", "content": _crear_prompt_auditoria(ticket, solucion_actual)}],
@@ -234,24 +259,28 @@ def investigar_solucion_stream(ticket: Dict) -> Generator[str, None, None]:
             "investigacion": solucion_actual.model_dump(),
             "auditoria": auditoria_final.model_dump()
         }
-        # \n CRÍTICO AQUÍ TAMBIÉN
         yield json.dumps({"type": "result", "data": paquete}) + "\n"
 
     except Exception as e:
         print(f"ERROR: {e}")
         yield json.dumps({"type": "error", "message": str(e)}) + "\n"
 
+# Helpers
+def limpiar_json(texto):
+    try: return json.loads(texto.replace("```json", "").replace("```", "").strip())
+    except: return None
+    
 def generar_interiorizacion_hibrida(ticket, solucion_detallada):
     print(f"🎨 [DALL-E] Iniciando generación de contenido para: {ticket['titulo']}")
     
-    # 1. Redactor UX: Crea el texto del post y el Prompt para la imagen
+    # 1. Redactor UX (Estilo Yape - Prompt Afinado)
     prompt_redaccion = f"""
     Rol: UX Writer experto en banca móvil (estilo Yape).
     Tarea: Redactar un post de Facebook empático y técnico informando la solución de este problema: {ticket['titulo']}.
     
     Salida JSON esperada:
     {{
-        "texto_post": "El contenido del post (con emojis, tono cercano pero profesional)...",
+        "texto_post": "El contenido del post (con emojis, tono cercano pero profesional, invitando al feedback)...",
         "prompt_imagen_en": "Un prompt detallado en INGLÉS para DALL-E 3. Estilo: Ilustración animada 2D de alta calidad (tipo caricatura moderna, flat design pulido), vibrante, amigable, con líneas limpias. Paleta de colores dominante morado y cian intenso (branding Yape). Debe parecer una gráfica oficial de redes sociales de una startup fintech."
     }}
     """
@@ -282,7 +311,6 @@ def generar_interiorizacion_hibrida(ticket, solucion_detallada):
                 print("   ✅ Imagen generada exitosamente.")
             except Exception as e_img:
                 print(f"   ⚠️ Error generando imagen: {e_img}")
-                # No rompemos el proceso, devolvemos solo texto si falla la imagen
                 url_imagen = "https://placehold.co/600x400?text=Error+Generando+Imagen"
 
         return {
@@ -292,5 +320,4 @@ def generar_interiorizacion_hibrida(ticket, solucion_detallada):
 
     except Exception as e:
         print(f"❌ Error CRÍTICO en Generación de Contenido: {e}")
-        # Retornamos un JSON de error para que el frontend no explote
         return {"texto_post": f"Error generando contenido: {str(e)}", "url_imagen": None}
