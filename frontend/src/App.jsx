@@ -1,8 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import ReactMarkdown from 'react-markdown';
+// Eliminamos la importación de ReactMarkdown que causa conflicto con React 19
+// import ReactMarkdown from 'react-markdown'; 
 import { jsPDF } from "jspdf";
 import PropTypes from 'prop-types';
+
+// --- COMPONENTE: RENDERIZADOR DE TEXTO SEGURO ---
+// Reemplazo robusto para evitar crashes con React 19
+const SafeTextRenderer = ({ content }) => {
+  if (!content) return null;
+  // Convertimos markdown básico a formato legible
+  const cleanContent = content
+    .replace(/\*\*(.*?)\*\*/g, '$1') // Negritas
+    .replace(/##/g, '')             // Títulos
+    .replace(/```/g, '')            // Bloques de código
+    .replace(/^-\s/gm, '• ');       // Listas
+
+  return (
+    <div className="whitespace-pre-wrap font-sans text-slate-300 text-sm leading-relaxed">
+      {cleanContent}
+    </div>
+  );
+};
+SafeTextRenderer.propTypes = { content: PropTypes.string };
 
 // --- COMPONENTE: HILO DE COMENTARIOS ---
 const CommentThread = ({ comment, isReply = false, onReplySuccess, isHighlighted = false }) => {
@@ -16,7 +36,7 @@ const CommentThread = ({ comment, isReply = false, onReplySuccess, isHighlighted
     if (!replyText.trim()) return;
     setSending(true);
     try {
-      await axios.post('http://127.0.0.1:8000/api/socializacion/responder', {
+      await axios.post('[http://127.0.0.1:8000/api/socializacion/responder](http://127.0.0.1:8000/api/socializacion/responder)', {
         padre_id: comment.id,
         usuario: "Soporte Yape (IA)",
         texto: replyText
@@ -149,21 +169,34 @@ function App() {
   const [highlightedIds, setHighlightedIds] = useState([]);
   const [expandedReasoningId, setExpandedReasoningId] = useState(null);
 
-  // --- API ---
+// --- API CON DEBUGGING ---
   const fetchComentarios = async () => {
     setLoading(true);
     try {
+      console.log("📡 Solicitando comentarios...");
       const res = await axios.get('http://127.0.0.1:8000/api/socializacion');
-      if (res.data && Array.isArray(res.data.comentarios)) {
-        setComentarios(res.data.comentarios);
+      
+      console.log("📦 Respuesta Backend:", res.data); // <--- MIRA ESTO EN CONSOLA (F12)
+
+      // Validación más flexible
+      if (res.data && res.data.comentarios) {
+        // Si es un array, lo usamos. Si no, intentamos convertirlo o usar array vacío
+        const dataArray = Array.isArray(res.data.comentarios) ? res.data.comentarios : [];
+        
+        if (dataArray.length === 0) {
+            console.warn("⚠️ El array de comentarios llegó vacío.");
+        }
+
+        setComentarios(dataArray);
         setFaseActual(2);
       } else {
-        alert("Recibimos datos vacíos del backend.");
+        console.error("❌ Estructura incorrecta:", res.data);
+        alert(`Error de formato: El backend no devolvió una lista válida.\nRevisa la consola (F12) para ver detalles.`);
       }
     } catch (e) { 
-      console.error(e); 
+      console.error("❌ Error de Red/Axios:", e); 
       setComentarios([]); 
-      alert("Error Backend: Verifica uvicorn."); 
+      alert("Error de Conexión: Verifica que el backend (uvicorn) esté corriendo."); 
     } finally { 
       setLoading(false); 
     }
@@ -174,9 +207,9 @@ function App() {
     setLoading(true);
     try {
       const comentariosTexto = comentarios.map(c => `[ID: ${c.id}] Usuario: ${c.user} Dijo: ${c.text}`);
-      const res = await axios.post('http://127.0.0.1:8000/api/exteriorizacion', { comentarios: comentariosTexto });
+      const res = await axios.post('[http://127.0.0.1:8000/api/exteriorizacion](http://127.0.0.1:8000/api/exteriorizacion)', { comentarios: comentariosTexto });
       setTickets(res.data);
-      setFaseActual(3); // Nota: Fase 3 lógica, aunque visualmente será el paso 2
+      setFaseActual(3); // Visualmente fase 2->3
     } catch (e) { console.error(e); alert("Error IA: Revisa backend."); } finally { setLoading(false); }
   };
 
@@ -195,7 +228,7 @@ function App() {
     addLog(index, '🚀', 'Conectando con SECAI o3 Engine...', 'info');
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/investigacion', {
+      const response = await fetch('[http://127.0.0.1:8000/api/investigacion](http://127.0.0.1:8000/api/investigacion)', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ticket)
@@ -252,7 +285,7 @@ function App() {
     setLoading(true); setPost(null);
     try {
       const solucion = solucionesFinales[index]?.investigacion.solucion_detallada || ticket.solucion;
-      const res = await axios.post('http://127.0.0.1:8000/api/combinacion', { ticket, solucion_detallada: solucion });
+      const res = await axios.post('[http://127.0.0.1:8000/api/combinacion](http://127.0.0.1:8000/api/combinacion)', { ticket, solucion_detallada: solucion });
       setPost(res.data);
       setFaseActual(4);
     } catch (e) { console.error(e); alert("Error Generando Post."); } finally { setLoading(false); }
@@ -381,7 +414,7 @@ function App() {
           </div>
         </section>
 
-        {/* 4. INTERNALIZACIÓN (MOVIDA ANTES DE COMBINACIÓN SEGÚN PEDIDO) */}
+        {/* 4. INTERNALIZACIÓN */}
         <section className={`bg-[#0b1121] border border-slate-800 rounded-2xl p-6 shadow-xl ${faseActual === 4 ? 'ring-1 ring-green-500/50 opacity-100' : 'opacity-70'}`}>
           <h2 className="text-lg font-bold mb-4 text-gray-100 flex items-center gap-2">4. Internalización <span className="text-xl">📢</span></h2>
           <div className="h-[400px] bg-slate-950/30 rounded-xl border border-slate-800 p-4">
@@ -395,7 +428,7 @@ function App() {
           </div>
         </section>
 
-        {/* 3. COMBINACIÓN (MOVIDA AL FINAL) */}
+        {/* 3. COMBINACIÓN */}
         <section className={`bg-[#0b1121] border border-slate-800 rounded-2xl p-6 shadow-xl ${faseActual === 3 ? 'ring-1 ring-yellow-500/50 opacity-100' : 'opacity-70'}`}>
           <h2 className="text-lg font-bold mb-4 text-gray-100 flex items-center gap-2">3. Combinación (Agentes) <span className="text-xl">🤖</span></h2>
           <div className="h-[400px] overflow-y-auto pr-2 custom-scrollbar space-y-6">
@@ -411,8 +444,6 @@ function App() {
                       <div className="flex gap-2 mt-2">
                         <button 
                           onClick={() => { 
-                            console.log("DEBUG: Abriendo Modal con datos:", solucionesFinales[i]); 
-                            // BLINDAJE DE MODAL
                             const finalData = solucionesFinales[i];
                             if (finalData && finalData.investigacion) {
                                 setModalData({ ticket: t, investigacion: finalData.investigacion, auditoria: finalData.auditoria }); 
@@ -467,42 +498,37 @@ function App() {
                     </div>
                 </div>
 
-                {/* Secciones con Optional Chaining Exhaustivo */}
+                {/* 1. Causa Raíz */}
                 {modalData.investigacion?.analisis_causa_raiz && (
                   <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800">
                     <h3 className="text-lg font-bold text-cyan-400 mb-3">🔍 1. Análisis de Causa Raíz</h3>
-                    <ReactMarkdown className="text-slate-300 text-sm leading-relaxed prose prose-invert max-w-none">
-                      {modalData.investigacion.analisis_causa_raiz}
-                    </ReactMarkdown>
+                    <SafeTextRenderer content={modalData.investigacion.analisis_causa_raiz} />
                   </div>
                 )}
 
+                {/* 2. Solución Técnica */}
                 {modalData.investigacion?.solucion_detallada && (
                   <div>
                     <h3 className="text-lg font-bold text-purple-400 mb-3">🛠️ 2. Solución Técnica</h3>
-                    <div className="text-slate-300 text-sm bg-[#0b1121] p-6 rounded-xl border border-slate-800">
-                      <ReactMarkdown className="prose prose-invert max-w-none">
-                        {modalData.investigacion.solucion_detallada}
-                      </ReactMarkdown>
+                    <div className="bg-[#0b1121] p-6 rounded-xl border border-slate-800">
+                      <SafeTextRenderer content={modalData.investigacion.solucion_detallada} />
                     </div>
                   </div>
                 )}
 
                 <div className="grid md:grid-cols-2 gap-6">
+                  {/* 3. Seguridad */}
                   {modalData.investigacion?.consideraciones_seguridad && (
                     <div className="bg-red-950/20 p-6 rounded-xl border border-red-900/30">
                       <h3 className="text-md font-bold text-red-400 mb-3">🛡️ 3. Seguridad</h3>
-                      <ReactMarkdown className="text-slate-300 text-xs leading-relaxed prose prose-invert">
-                        {modalData.investigacion.consideraciones_seguridad}
-                      </ReactMarkdown>
+                      <SafeTextRenderer content={modalData.investigacion.consideraciones_seguridad} />
                     </div>
                   )}
+                  {/* 4. Rollback */}
                   {modalData.investigacion?.plan_rollback && (
                     <div className="bg-orange-950/20 p-6 rounded-xl border border-orange-900/30">
                       <h3 className="text-md font-bold text-orange-400 mb-3">↩️ 4. Rollback</h3>
-                      <ReactMarkdown className="text-slate-300 text-xs leading-relaxed prose prose-invert">
-                        {modalData.investigacion.plan_rollback}
-                      </ReactMarkdown>
+                      <SafeTextRenderer content={modalData.investigacion.plan_rollback} />
                     </div>
                   )}
                 </div>
