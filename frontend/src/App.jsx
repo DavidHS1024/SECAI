@@ -4,13 +4,12 @@ import ReactMarkdown from 'react-markdown';
 import { jsPDF } from "jspdf";
 import PropTypes from 'prop-types';
 
-// --- COMPONENTE: HILO DE COMENTARIOS (CON HIGHLIGHT) ---
+// --- COMPONENTE: HILO DE COMENTARIOS ---
 const CommentThread = ({ comment, isReply = false, onReplySuccess, isHighlighted = false }) => {
   const [showInput, setShowInput] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
 
-  // Protección: Si el comentario viene nulo por alguna razón, no renderizar
   if (!comment) return null;
 
   const handleSendReply = async () => {
@@ -94,13 +93,13 @@ const CommentThread = ({ comment, isReply = false, onReplySuccess, isHighlighted
 };
 
 CommentThread.propTypes = {
-  comment: PropTypes.object, // Cambiado a opcional para evitar crash si es null
+  comment: PropTypes.object,
   isReply: PropTypes.bool,
   onReplySuccess: PropTypes.func,
   isHighlighted: PropTypes.bool
 };
 
-// --- COMPONENTE: CONSOLA DE AGENTE (Scroll Automático) ---
+// --- COMPONENTE: CONSOLA DE AGENTE ---
 const AgentConsole = ({ logs }) => {
   const scrollRef = useRef(null);
   
@@ -137,7 +136,7 @@ AgentConsole.propTypes = { logs: PropTypes.array };
 
 // --- APP PRINCIPAL ---
 function App() {
-  const [comentarios, setComentarios] = useState([]); // Inicializado siempre como array
+  const [comentarios, setComentarios] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [post, setPost] = useState(null);
   const [agentLogs, setAgentLogs] = useState({}); 
@@ -155,18 +154,15 @@ function App() {
     setLoading(true);
     try {
       const res = await axios.get('http://127.0.0.1:8000/api/socializacion');
-      // Validación estricta para evitar pantalla blanca
       if (res.data && Array.isArray(res.data.comentarios)) {
         setComentarios(res.data.comentarios);
         setFaseActual(2);
       } else {
-        console.error("Formato de comentarios inválido:", res.data);
-        setComentarios([]);
         alert("Recibimos datos vacíos del backend.");
       }
     } catch (e) { 
       console.error(e); 
-      setComentarios([]); // Fallback seguro
+      setComentarios([]); 
       alert("Error Backend: Verifica uvicorn."); 
     } finally { 
       setLoading(false); 
@@ -180,11 +176,11 @@ function App() {
       const comentariosTexto = comentarios.map(c => `[ID: ${c.id}] Usuario: ${c.user} Dijo: ${c.text}`);
       const res = await axios.post('http://127.0.0.1:8000/api/exteriorizacion', { comentarios: comentariosTexto });
       setTickets(res.data);
-      setFaseActual(3);
+      setFaseActual(3); // Nota: Fase 3 lógica, aunque visualmente será el paso 2
     } catch (e) { console.error(e); alert("Error IA: Revisa backend."); } finally { setLoading(false); }
   };
 
-  // --- LOGICA DE AGENTES CON STREAMING ---
+  // --- LOGICA DE AGENTES ---
   const addLog = (index, emoji, message, type = 'text') => {
     setAgentLogs(prev => ({
       ...prev,
@@ -262,7 +258,7 @@ function App() {
     } catch (e) { console.error(e); alert("Error Generando Post."); } finally { setLoading(false); }
   };
 
-  // --- GENERACIÓN DE PDF MEJORADA ---
+  // --- PDF ---
   const generarPDF = () => {
     if (!modalData) return;
     const doc = new jsPDF({ format: 'a4' });
@@ -271,98 +267,54 @@ function App() {
     const pageHeight = doc.internal.pageSize.height;
     let y = 20;
 
-    // Helper: Limpia Markdown y escribe con control de página
     const printTextBlock = (title, textContent, isBoldTitle = true) => {
-      // Limpieza de Markdown
       let cleanText = (textContent || "N/A")
         .replace(/\*\*(.*?)\*\*/g, '$1')
         .replace(/##/g, '')
         .replace(/```/g, '')
         .replace(/^\s*[\r\n]/gm, '');
 
-      // Control de salto de página antes del título
       if (y > pageHeight - 40) { doc.addPage(); y = 20; }
-      
-      // CAMBIO AQUÍ: Ahora usamos isBoldTitle correctamente
       doc.setFont("helvetica", isBoldTitle ? "bold" : "normal");
       doc.setFontSize(11);
       doc.setTextColor(0, 0, 0);
       doc.text(title, margin, y);
       y += 6;
-      
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.setTextColor(60, 60, 60);
-
       const lines = doc.splitTextToSize(cleanText, 170);
-      
       lines.forEach(line => {
-        if (y > pageHeight - 20) {
-            doc.addPage();
-            y = 20;
-        }
+        if (y > pageHeight - 20) { doc.addPage(); y = 20; }
         doc.text(line, margin, y);
         y += 5;
       });
       y += 5; 
     };
 
-    // Header PDF
     doc.setFontSize(18); doc.setFont("helvetica", "bold");
-    doc.text("INFORME TÉCNICO DE INGENIERÍA", margin, y); y += 10;
+    doc.text("INFORME TÉCNICO", margin, y); y += 10;
     
     doc.setFontSize(10);
-    doc.text(`TICKET: ${ticket.titulo}`, margin, y); y += 5;
-    doc.text(`FECHA: ${new Date().toLocaleDateString()}`, margin, y); y += 5;
+    doc.text(`TICKET: ${ticket?.titulo || "Sin Título"}`, margin, y); y += 5;
     
     if (auditoria) {
       doc.setTextColor(auditoria.score >= 90 ? 0 : 200, auditoria.score >= 90 ? 100 : 0, 0);
-      doc.text(`CALIDAD AUDITADA: ${auditoria.score}/100 (${auditoria.estado})`, margin, y);
+      doc.text(`SCORE: ${auditoria.score}/100 (${auditoria.estado})`, margin, y);
       doc.setTextColor(0);
     }
     y += 10; doc.line(margin, y, 190, y); y += 10;
 
-    // Secciones
-    if (investigacion.analisis_causa_raiz) {
-        printTextBlock("1. ANÁLISIS DE CAUSA RAÍZ", investigacion.analisis_causa_raiz, true);
-    }
-    
-    printTextBlock("2. SOLUCIÓN TÉCNICA DETALLADA", investigacion.solucion_detallada, true);
-    
-    if (investigacion.consideraciones_seguridad) {
-        printTextBlock("3. ANÁLISIS DE SEGURIDAD & COMPLIANCE", investigacion.consideraciones_seguridad, true);
-    }
+    if (investigacion?.analisis_causa_raiz) printTextBlock("1. CAUSA RAÍZ", investigacion.analisis_causa_raiz, true);
+    if (investigacion?.solucion_detallada) printTextBlock("2. SOLUCIÓN TÉCNICA", investigacion.solucion_detallada, true);
+    if (investigacion?.plan_rollback) printTextBlock("3. ROLLBACK", investigacion.plan_rollback, true);
 
-    if (investigacion.plan_rollback) {
-        printTextBlock("4. PLAN DE ROLLBACK (CONTINGENCIA)", investigacion.plan_rollback, true);
-    }
-
-    // Bibliografía
-    if (investigacion.fuentes_bibliograficas?.length > 0) {
-        if (y > pageHeight - 40) { doc.addPage(); y = 20; }
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(0);
-        doc.text("5. REFERENCIAS TÉCNICAS", margin, y); y += 8;
-        
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        doc.setTextColor(0, 0, 255);
-        
-        investigacion.fuentes_bibliograficas.forEach(f => {
-            const text = `• ${f.titulo} (${f.url})`;
-            const lines = doc.splitTextToSize(text, 170);
-            if (y + (lines.length * 5) > pageHeight - 20) { doc.addPage(); y = 20; }
-            doc.text(lines, margin, y);
-            y += (lines.length * 5) + 2;
-        });
-    }
-
-    doc.save(`SECAI_Reporte_${ticket.titulo.replace(/\s+/g, '_')}.pdf`);
+    doc.save(`Reporte_SECAI.pdf`);
   };
 
-  // --- RENDER ---
   const getBorderColor = (p) => (p?.toLowerCase() === 'alta' ? 'border-l-orange-500' : p?.toLowerCase() === 'media' ? 'border-l-yellow-500' : 'border-l-green-500');
 
+  // --- RENDER ---
   return (
     <div className="min-h-screen bg-[#020617] text-slate-100 font-sans p-4 md:p-8 relative selection:bg-cyan-500/30">
       <header className="relative bg-[#020617] border border-slate-800 rounded-2xl p-6 mb-8 shadow-2xl overflow-hidden">
@@ -382,6 +334,7 @@ function App() {
       </header>
 
       <main className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+        
         {/* 1. SOCIALIZACIÓN */}
         <section className={`bg-[#0b1121] border border-slate-800 rounded-2xl p-6 shadow-xl ${faseActual === 1 ? 'ring-1 ring-cyan-500/50' : ''}`}>
           <h2 className="text-lg font-bold mb-4 text-gray-100 flex items-center gap-2">1. Socialización <span className="text-xl">🗣️</span></h2>
@@ -428,9 +381,9 @@ function App() {
           </div>
         </section>
 
-        {/* 4. INTERNALIZACIÓN */}
+        {/* 4. INTERNALIZACIÓN (MOVIDA ANTES DE COMBINACIÓN SEGÚN PEDIDO) */}
         <section className={`bg-[#0b1121] border border-slate-800 rounded-2xl p-6 shadow-xl ${faseActual === 4 ? 'ring-1 ring-green-500/50 opacity-100' : 'opacity-70'}`}>
-          <h2 className="text-lg font-bold mb-4 text-gray-100 flex items-center gap-2">4. Internalización 📢</h2>
+          <h2 className="text-lg font-bold mb-4 text-gray-100 flex items-center gap-2">4. Internalización <span className="text-xl">📢</span></h2>
           <div className="h-[400px] bg-slate-950/30 rounded-xl border border-slate-800 p-4">
             {post ? (
               <div className="space-y-4 animate-in fade-in">
@@ -442,9 +395,9 @@ function App() {
           </div>
         </section>
 
-        {/* 3. COMBINACIÓN */}
+        {/* 3. COMBINACIÓN (MOVIDA AL FINAL) */}
         <section className={`bg-[#0b1121] border border-slate-800 rounded-2xl p-6 shadow-xl ${faseActual === 3 ? 'ring-1 ring-yellow-500/50 opacity-100' : 'opacity-70'}`}>
-          <h2 className="text-lg font-bold mb-4 text-gray-100 flex items-center gap-2">3. Combinación (Agentes) 🤖</h2>
+          <h2 className="text-lg font-bold mb-4 text-gray-100 flex items-center gap-2">3. Combinación (Agentes) <span className="text-xl">🤖</span></h2>
           <div className="h-[400px] overflow-y-auto pr-2 custom-scrollbar space-y-6">
             {tickets.map((t, i) => (
               <div key={i} className="bg-slate-900/40 border border-slate-800 rounded-xl p-5">
@@ -458,39 +411,22 @@ function App() {
                       <div className="flex gap-2 mt-2">
                         <button 
                           onClick={() => { 
-                            // Verificación de seguridad antes de abrir
-                            const dataFinal = solucionesFinales[i];
-                            if (dataFinal && dataFinal.investigacion) {
-                              setModalData({ 
-                                ticket: t, 
-                                investigacion: dataFinal.investigacion, 
-                                auditoria: dataFinal.auditoria 
-                              }); 
-                              setModalOpen(true); 
+                            console.log("DEBUG: Abriendo Modal con datos:", solucionesFinales[i]); 
+                            // BLINDAJE DE MODAL
+                            const finalData = solucionesFinales[i];
+                            if (finalData && finalData.investigacion) {
+                                setModalData({ ticket: t, investigacion: finalData.investigacion, auditoria: finalData.auditoria }); 
+                                setModalOpen(true);
                             } else {
-                              alert("El reporte aún no está listo o hubo un error en la generación.");
+                                alert("Error: Datos incompletos del agente.");
                             }
                           }} 
-                          // Deshabilitar visualmente si no hay datos
                           disabled={!solucionesFinales[i]}
-                          className={`flex-1 py-2 text-[10px] rounded border transition-all ${
-                            solucionesFinales[i] 
-                              ? 'bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700 hover:text-white' 
-                              : 'bg-slate-900 text-slate-600 border-slate-800 cursor-not-allowed'
-                          }`}
+                          className={`flex-1 py-2 text-[10px] rounded border transition-all ${solucionesFinales[i] ? 'bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700' : 'bg-slate-900 text-slate-600 border-slate-800 cursor-not-allowed'}`}
                         >
                           📄 Ver Reporte
                         </button>
-                        
-                        <button 
-                          onClick={() => aprobarTicket(t, i)} 
-                          disabled={!solucionesFinales[i]}
-                          className={`flex-1 py-2 text-[10px] font-bold rounded transition-all ${
-                            solucionesFinales[i]
-                              ? 'bg-green-700 text-white hover:bg-green-600'
-                              : 'bg-slate-900 text-slate-700 cursor-not-allowed'
-                          }`}
-                        >
+                        <button onClick={() => aprobarTicket(t, i)} disabled={!solucionesFinales[i]} className={`flex-1 py-2 text-[10px] font-bold rounded transition-all ${solucionesFinales[i] ? 'bg-green-700 text-white hover:bg-green-600' : 'bg-slate-900 text-slate-700 cursor-not-allowed'}`}>
                           Aprobar
                         </button>
                       </div>
@@ -501,10 +437,10 @@ function App() {
             ))}
           </div>
         </section>
-        
+
       </main>
 
-      {/* MODAL */}
+      {/* MODAL BLINDADO A PRUEBA DE FALLOS */}
       {modalOpen && modalData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
           <div className="bg-[#0f172a] w-full max-w-5xl h-[90vh] rounded-xl border border-slate-700 flex flex-col relative overflow-hidden shadow-2xl">
@@ -520,49 +456,66 @@ function App() {
               </div>
             </div>
 
-            {/* Contenido */}
+            {/* Contenido Seguro */}
             <div className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-[#020617]">
               <div className="max-w-4xl mx-auto space-y-8">
                 <div className="border-b border-slate-800 pb-6 flex justify-between items-start">
-                    <h1 className="text-3xl font-bold text-white max-w-2xl">{modalData.ticket.titulo}</h1>
-                    <div className={`px-4 py-2 rounded-lg border ${modalData.auditoria.score >= 90 ? 'bg-green-500/10 border-green-500/50 text-green-400' : 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'}`}>
+                    <h1 className="text-3xl font-bold text-white max-w-2xl">{modalData.ticket?.titulo || "Sin Título"}</h1>
+                    <div className={`px-4 py-2 rounded-lg border ${modalData.auditoria?.score >= 90 ? 'bg-green-500/10 border-green-500/50 text-green-400' : 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'}`}>
                       <div className="text-xs uppercase font-bold tracking-wider">Calidad</div>
-                      <div className="text-2xl font-bold text-center">{modalData.auditoria.score}/100</div>
+                      <div className="text-2xl font-bold text-center">{modalData.auditoria?.score || 0}/100</div>
                     </div>
                 </div>
 
-                <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800">
-                  <h3 className="text-lg font-bold text-cyan-400 mb-3">🔍 1. Análisis de Causa Raíz</h3>
-                  <ReactMarkdown className="text-slate-300 text-sm leading-relaxed prose prose-invert max-w-none">{modalData.investigacion.analisis_causa_raiz}</ReactMarkdown>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-bold text-purple-400 mb-3">🛠️ 2. Solución Técnica</h3>
-                  <div className="text-slate-300 text-sm bg-[#0b1121] p-6 rounded-xl border border-slate-800">
-                    <ReactMarkdown className="prose prose-invert max-w-none">{modalData.investigacion.solucion_detallada}</ReactMarkdown>
+                {/* Secciones con Optional Chaining Exhaustivo */}
+                {modalData.investigacion?.analisis_causa_raiz && (
+                  <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800">
+                    <h3 className="text-lg font-bold text-cyan-400 mb-3">🔍 1. Análisis de Causa Raíz</h3>
+                    <ReactMarkdown className="text-slate-300 text-sm leading-relaxed prose prose-invert max-w-none">
+                      {modalData.investigacion.analisis_causa_raiz}
+                    </ReactMarkdown>
                   </div>
-                </div>
+                )}
+
+                {modalData.investigacion?.solucion_detallada && (
+                  <div>
+                    <h3 className="text-lg font-bold text-purple-400 mb-3">🛠️ 2. Solución Técnica</h3>
+                    <div className="text-slate-300 text-sm bg-[#0b1121] p-6 rounded-xl border border-slate-800">
+                      <ReactMarkdown className="prose prose-invert max-w-none">
+                        {modalData.investigacion.solucion_detallada}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid md:grid-cols-2 gap-6">
-                  <div className="bg-red-950/20 p-6 rounded-xl border border-red-900/30">
-                    <h3 className="text-md font-bold text-red-400 mb-3">🛡️ 3. Seguridad</h3>
-                    <ReactMarkdown className="text-slate-300 text-xs leading-relaxed prose prose-invert">{modalData.investigacion.consideraciones_seguridad}</ReactMarkdown>
-                  </div>
-                  <div className="bg-orange-950/20 p-6 rounded-xl border border-orange-900/30">
-                    <h3 className="text-md font-bold text-orange-400 mb-3">↩️ 4. Rollback</h3>
-                    <ReactMarkdown className="text-slate-300 text-xs leading-relaxed prose prose-invert">{modalData.investigacion.plan_rollback}</ReactMarkdown>
-                  </div>
+                  {modalData.investigacion?.consideraciones_seguridad && (
+                    <div className="bg-red-950/20 p-6 rounded-xl border border-red-900/30">
+                      <h3 className="text-md font-bold text-red-400 mb-3">🛡️ 3. Seguridad</h3>
+                      <ReactMarkdown className="text-slate-300 text-xs leading-relaxed prose prose-invert">
+                        {modalData.investigacion.consideraciones_seguridad}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                  {modalData.investigacion?.plan_rollback && (
+                    <div className="bg-orange-950/20 p-6 rounded-xl border border-orange-900/30">
+                      <h3 className="text-md font-bold text-orange-400 mb-3">↩️ 4. Rollback</h3>
+                      <ReactMarkdown className="text-slate-300 text-xs leading-relaxed prose prose-invert">
+                        {modalData.investigacion.plan_rollback}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                 </div>
                 
-                 {/* 5. Referencias */}
-                {modalData.investigacion.fuentes_bibliograficas?.length > 0 && (
+                 {/* Referencias: Doble verificación de existencia */}
+                {Array.isArray(modalData.investigacion?.fuentes_bibliograficas) && modalData.investigacion.fuentes_bibliograficas.length > 0 && (
                   <div className="border-t border-slate-800 pt-6">
                     <h3 className="text-sm font-bold text-slate-500 mb-3 uppercase tracking-wider">📚 Referencias Bibliográficas</h3>
                     <ul className="space-y-2">
                       {modalData.investigacion.fuentes_bibliograficas.map((f, i) => (
                         <li key={i} className="text-xs">
-                          <a href={f.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline flex items-center gap-2">
-                            <span>🔗</span> {f.titulo} <span className="text-slate-600 truncate max-w-xs">({f.url})</span>
+                          <a href={f?.url || "#"} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline flex items-center gap-2">
+                            <span>🔗</span> {f?.titulo || "Fuente"} <span className="text-slate-600 truncate max-w-xs">({f?.url})</span>
                           </a>
                         </li>
                       ))}
