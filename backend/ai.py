@@ -240,3 +240,57 @@ def investigar_solucion_stream(ticket: Dict) -> Generator[str, None, None]:
     except Exception as e:
         print(f"ERROR: {e}")
         yield json.dumps({"type": "error", "message": str(e)}) + "\n"
+
+def generar_interiorizacion_hibrida(ticket, solucion_detallada):
+    print(f"🎨 [DALL-E] Iniciando generación de contenido para: {ticket['titulo']}")
+    
+    # 1. Redactor UX: Crea el texto del post y el Prompt para la imagen
+    prompt_redaccion = f"""
+    Rol: UX Writer experto en banca móvil (estilo Yape).
+    Tarea: Redactar un post de Facebook empático y técnico informando la solución de este problema: {ticket['titulo']}.
+    
+    Salida JSON esperada:
+    {{
+        "texto_post": "El contenido del post (con emojis, tono cercano pero profesional)...",
+        "prompt_imagen_en": "Un prompt detallado en INGLÉS para DALL-E 3. Estilo: Ilustración animada 2D de alta calidad (tipo caricatura moderna, flat design pulido), vibrante, amigable, con líneas limpias. Paleta de colores dominante morado y cian intenso (branding Yape). Debe parecer una gráfica oficial de redes sociales de una startup fintech."
+    }}
+    """
+    
+    try:
+        # Generación de Texto
+        completion = client.chat.completions.create(
+            model=MODELO_RAPIDO, 
+            messages=[{"role":"user","content":prompt_redaccion}], 
+            response_format={"type":"json_object"}
+        )
+        data = json.loads(completion.choices[0].message.content)
+        
+        url_imagen = None
+        
+        # 2. Generación de Imagen (DALL-E 3)
+        if IA_ACTIVA:
+            try:
+                print(f"   🖌️ Generando imagen con prompt: {data['prompt_imagen_en'][:50]}...")
+                response = client.images.generate(
+                    model="dall-e-3",
+                    prompt=data['prompt_imagen_en'],
+                    size="1024x1024",
+                    quality="standard",
+                    n=1,
+                )
+                url_imagen = response.data[0].url
+                print("   ✅ Imagen generada exitosamente.")
+            except Exception as e_img:
+                print(f"   ⚠️ Error generando imagen: {e_img}")
+                # No rompemos el proceso, devolvemos solo texto si falla la imagen
+                url_imagen = "https://placehold.co/600x400?text=Error+Generando+Imagen"
+
+        return {
+            "texto_post": data.get("texto_post"), 
+            "url_imagen": url_imagen
+        }
+
+    except Exception as e:
+        print(f"❌ Error CRÍTICO en Generación de Contenido: {e}")
+        # Retornamos un JSON de error para que el frontend no explote
+        return {"texto_post": f"Error generando contenido: {str(e)}", "url_imagen": None}

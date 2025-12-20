@@ -307,14 +307,44 @@ const analizarInsights = async () => {
     }
   };
 
-  const aprobarTicket = async (ticket, index) => {
+const aprobarTicket = async (ticket, index) => {
     setLoading(true); setPost(null);
+    console.log("🚀 Iniciando aprobación del ticket:", ticket.titulo);
+    
     try {
-      const solucion = solucionesFinales[index]?.investigacion.solucion_detallada || ticket.solucion;
-      const res = await axios.post('[http://127.0.0.1:8000/api/combinacion](http://127.0.0.1:8000/api/combinacion)', { ticket, solucion_detallada: solucion });
+      // 1. Preparamos los datos
+      const solucion = solucionesFinales[index]?.investigacion?.solucion_detallada || ticket.solucion || "Solución pendiente.";
+      
+      const payload = { 
+        ticket: ticket, 
+        solucion_detallada: solucion 
+      };
+
+      console.log("📤 Enviando payload a /api/combinacion...", payload);
+
+      // 2. Petición al Backend
+      const res = await axios.post('http://127.0.0.1:8000/api/combinacion', payload);
+      
+      console.log("✅ Respuesta del Backend (Post):", res.data);
       setPost(res.data);
       setFaseActual(4);
-    } catch (e) { console.error(e); alert("Error Generando Post."); } finally { setLoading(false); }
+
+    } catch (e) { 
+      console.error("❌ Error en aprobarTicket:", e);
+      
+      let mensajeError = "Error desconocido";
+      if (e.response) {
+          mensajeError = `Backend Error ${e.response.status}: ${JSON.stringify(e.response.data)}`;
+      } else if (e.request) {
+          mensajeError = "No hubo respuesta del servidor (Posible Timeout o CORS)";
+      } else {
+          mensajeError = e.message;
+      }
+      
+      alert(`Error Generando Post:\n${mensajeError}\n(Revisa la consola F12)`);
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   // --- PDF ---
@@ -440,17 +470,54 @@ const analizarInsights = async () => {
           </div>
         </section>
 
-        {/* 4. INTERNALIZACIÓN */}
+{/* 4. INTERNALIZACIÓN */}
         <section className={`bg-[#0b1121] border border-slate-800 rounded-2xl p-6 shadow-xl ${faseActual === 4 ? 'ring-1 ring-green-500/50 opacity-100' : 'opacity-70'}`}>
           <h2 className="text-lg font-bold mb-4 text-gray-100 flex items-center gap-2">4. Internalización <span className="text-xl">📢</span></h2>
-          <div className="h-[400px] bg-slate-950/30 rounded-xl border border-slate-800 p-4">
+          
+          {/* CONTENEDOR CON SCROLL PARA QUE LA IMAGEN NO CORTE EL TEXTO */}
+          <div className="h-[400px] bg-slate-950/30 rounded-xl border border-slate-800 p-4 overflow-y-auto custom-scrollbar relative">
             {post ? (
               <div className="space-y-4 animate-in fade-in">
-                <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center font-bold">Y</div><div><div className="text-sm font-bold text-slate-100">Yape Oficial</div><div className="text-xs text-slate-500">Ahora</div></div></div>
-                <p className="text-sm text-slate-300">{post.texto_post}</p>
-                {post.url_imagen && <img src={post.url_imagen} className="w-full rounded-xl border border-slate-800" alt="Post" />}
+                {/* Header del Post */}
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center font-bold shadow-lg shadow-purple-900/50 text-white">Y</div>
+                  <div>
+                    <div className="text-sm font-bold text-slate-100">Yape Oficial</div>
+                    <div className="text-xs text-slate-500 flex items-center gap-1">Hace un momento <span>•</span> 🌎</div>
+                  </div>
+                </div>
+                
+                {/* Texto del post */}
+                <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{post.texto_post}</p>
+                
+                {/* IMAGEN ESTILIZADA: Max height para no romper el layout + object-cover */}
+                {post.url_imagen && (
+                  <div className="relative group mt-2 rounded-xl overflow-hidden border border-slate-800 shadow-2xl">
+                     <img 
+                       src={post.url_imagen} 
+                       className="w-full h-auto max-h-[300px] object-cover hover:scale-105 transition-transform duration-700 ease-in-out" 
+                       alt="Contenido generado por IA" 
+                     />
+                     {/* Badge de IA */}
+                     <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[9px] text-white/80 font-mono border border-white/10">
+                       DALL·E 3
+                     </div>
+                  </div>
+                )}
+                
+                {/* Footer de Red Social (Fake Interactions) */}
+                <div className="flex justify-between items-center pt-3 border-t border-slate-800/50 text-slate-500 text-xs font-semibold">
+                   <button className="flex items-center gap-1.5 hover:text-cyan-400 transition-colors py-1"><span>👍</span> Me gusta</button>
+                   <button className="flex items-center gap-1.5 hover:text-cyan-400 transition-colors py-1"><span>💬</span> Comentar</button>
+                   <button className="flex items-center gap-1.5 hover:text-cyan-400 transition-colors py-1"><span>↗️</span> Compartir</button>
+                </div>
               </div>
-            ) : <div className="text-center mt-20 opacity-50">El post generado aparecerá aquí.</div>}
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-slate-700 space-y-4">
+                 <div className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-2xl animate-pulse">🖼️</div>
+                 <p className="text-xs font-mono uppercase tracking-widest opacity-50">Esperando Contenido...</p>
+              </div>
+            )}
           </div>
         </section>
 
