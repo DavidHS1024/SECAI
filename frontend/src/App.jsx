@@ -168,13 +168,14 @@ function App() {
   const [modalData, setModalData] = useState(null);
   const [highlightedIds, setHighlightedIds] = useState([]);
   const [expandedReasoningId, setExpandedReasoningId] = useState(null);
+  const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 // --- API CON DEBUGGING ---
   const fetchComentarios = async () => {
     setLoading(true);
     try {
       console.log("📡 Solicitando comentarios...");
-      const res = await axios.get('http://127.0.0.1:8000/api/socializacion');
+      const res = await axios.get(`${API_URL}/api/socializacion`)
       
       console.log("📦 Respuesta Backend:", res.data); // <--- MIRA ESTO EN CONSOLA (F12)
 
@@ -211,7 +212,7 @@ const analizarInsights = async () => {
     try {
       const comentariosTexto = comentarios.map(c => `[ID: ${c.id}] Usuario: ${c.user} Dijo: ${c.text}`);
       
-      const res = await axios.post('http://127.0.0.1:8000/api/exteriorizacion', { 
+      const res = await axios.post(`${API_URL}/api/exteriorizacion`, { 
         comentarios: comentariosTexto 
       });
 
@@ -254,7 +255,7 @@ const analizarInsights = async () => {
     addLog(index, '🚀', 'Conectando con SECAI o3 Engine...', 'info');
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/investigacion', {
+      const response = await fetch(`${API_URL}/api/investigacion`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ticket)
@@ -323,7 +324,7 @@ const aprobarTicket = async (ticket, index) => {
       console.log("📤 Enviando payload a /api/combinacion...", payload);
 
       // 2. Petición al Backend
-      const res = await axios.post('http://127.0.0.1:8000/api/combinacion', payload);
+      const res = await axios.post(`${API_URL}/api/combinacion`, payload);
       
       console.log("✅ Respuesta del Backend (Post):", res.data);
       setPost(res.data);
