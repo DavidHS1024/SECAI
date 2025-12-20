@@ -202,15 +202,41 @@ function App() {
     }
   };
 
-  const analizarInsights = async () => {
-    if (!comentarios || comentarios.length === 0) return alert("Faltan comentarios.");
+const analizarInsights = async () => {
+    if (!comentarios || comentarios.length === 0) return alert("Faltan comentarios para analizar.");
+    
     setLoading(true);
+    console.log("🚀 Enviando solicitud a /api/exteriorizacion...");
+
     try {
       const comentariosTexto = comentarios.map(c => `[ID: ${c.id}] Usuario: ${c.user} Dijo: ${c.text}`);
-      const res = await axios.post('[http://127.0.0.1:8000/api/exteriorizacion](http://127.0.0.1:8000/api/exteriorizacion)', { comentarios: comentariosTexto });
+      
+      const res = await axios.post('http://127.0.0.1:8000/api/exteriorizacion', { 
+        comentarios: comentariosTexto 
+      });
+
+      console.log("✅ Respuesta recibida:", res.data);
       setTickets(res.data);
-      setFaseActual(3); // Visualmente fase 2->3
-    } catch (e) { console.error(e); alert("Error IA: Revisa backend."); } finally { setLoading(false); }
+      setFaseActual(3);
+
+    } catch (e) {
+      console.error("❌ ERROR DETALLADO:", e);
+      
+      let mensaje = "Error desconocido.";
+      if (e.response) {
+        // El servidor respondió con un código de error (4xx, 5xx)
+        mensaje = `El servidor respondió error ${e.response.status}: ${JSON.stringify(e.response.data)}`;
+      } else if (e.request) {
+        // La petición se envió pero no hubo respuesta (CORS o Red)
+        mensaje = "No hubo respuesta del servidor. Posible bloqueo CORS o Backend apagado.";
+      } else {
+        mensaje = `Error al configurar la petición: ${e.message}`;
+      }
+
+      alert(`Error IA:\n${mensaje}\n\n(Revisa la consola con F12 para más detalles)`);
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   // --- LOGICA DE AGENTES ---

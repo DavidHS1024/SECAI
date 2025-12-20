@@ -1,25 +1,41 @@
-from fastapi import FastAPI, HTTPException, Body
+import logging
+from fastapi import FastAPI, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 import services
 import ai
 
+# --- CONFIGURACIÓN DE LOGS ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("uvicorn")
+
 app = FastAPI()
 
-# --- CONFIGURACIÓN CORS (MODO PERMISIVO) ---
-# Permitimos "*" para evitar problemas entre localhost y 127.0.0.1
+# --- MIDDLEWARE DE LOGGING (EL CHIVATO) ---
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"👉 INGRESO: {request.method} {request.url}")
+    try:
+        response = await call_next(request)
+        logger.info(f"👈 SALIDA: {response.status_code}")
+        return response
+    except Exception as e:
+        logger.error(f"❌ ERROR EN REQUEST: {e}")
+        raise e
+
+# --- CORS (PERMISIVO TOTAL) ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Acepta todo (localhost, 127.0.0.1, IP local)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- MODELOS DE ENTRADA (DTOs) ---
+# --- MODELOS ---
 class ReplyPayload(BaseModel):
     padre_id: str
     usuario: str
@@ -36,63 +52,46 @@ class AuditoriaPayload(BaseModel):
     ticket: Dict[str, Any]
     solucion_propuesta: Any
 
-# --- RUTAS DE LA API ---
+# --- RUTAS ---
 
 @app.get("/")
 def read_root():
     return {"status": "online", "system": "SECAI Backend (o3 Enabled)"}
 
-# 1. SOCIALIZACIÓN
 @app.get("/api/socializacion")
 def get_comentarios():
-    print("📡 GET /api/socializacion solicitado")
-    comentarios = services.obtener_comentarios()
-    return {"comentarios": comentarios}
+    print("📡 GET /api/socializacion")
+    return {"comentarios": services.obtener_comentarios()}
 
 @app.post("/api/socializacion/responder")
 def post_responder(payload: ReplyPayload):
-    exito = services.agregar_respuesta(payload.padre_id, payload.usuario, payload.texto)
-    if not exito:
-        raise HTTPException(status_code=400, detail="Error enviando respuesta")
-    return {"status": "ok"}
+    if services.agregar_respuesta(payload.padre_id, payload.usuario, payload.texto):
+        return {"status": "ok"}
+    raise HTTPException(status_code=400, detail="Error al responder")
 
-# 2. EXTERIORIZACIÓN (El punto donde tenías el error)
 @app.post("/api/exteriorizacion")
 def post_analizar(payload: ExteriorizacionPayload):
-    print(f"📥 [BACKEND] Recibida solicitud de Análisis con {len(payload.comentarios)} comentarios.")
-    
-    # Llamamos a la lógica que YA PROBASTE que funciona
+    print(f"📥 [PROCESANDO] Análisis de {len(payload.comentarios)} comentarios...")
     try:
         tickets = ai.analizar_exteriorizacion(payload.comentarios)
-        print(f"📤 [BACKEND] Análisis completado. Retornando {len(tickets)} tickets.")
+        print(f"✅ [EXITO] Se generaron {len(tickets)} tickets.")
         return tickets
     except Exception as e:
-        print(f"❌ [BACKEND] Error interno en IA: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"🔥 [CRASH] Error en IA: {str(e)}")
+        # Importante: Devolvemos el error como JSON para que el frontend sepa qué pasó
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
-# 3. COMBINACIÓN (Investigación + Streaming)
 @app.post("/api/investigacion")
 async def post_investigar(ticket: Dict[str, Any]):
     print(f"📡 [STREAM] Iniciando investigación para: {ticket.get('titulo', 'Ticket')}")
     generator = ai.investigar_solucion_stream(ticket)
     return StreamingResponse(generator, media_type="application/x-ndjson")
 
-# 3B. AUDITORÍA (Legacy)
-@app.post("/api/auditoria")
-def post_auditar(payload: AuditoriaPayload):
-    return ai.auditar_solucion_tecnica(payload.ticket, payload.solucion_propuesta)
-
-# 3C. REFINAMIENTO (Legacy)
-@app.post("/api/refinar")
-def post_refinar(ticket: Dict[str, Any] = Body(...), solucion_anterior: Any = Body(...), reporte_auditoria: Any = Body(...)):
-    return ai.refinar_solucion_tecnica(ticket, solucion_anterior, reporte_auditoria)
-
-# 4. INTERNALIZACIÓN
 @app.post("/api/combinacion")
 def post_generar_contenido(payload: CombinacionPayload):
     return ai.generar_interiorizacion_hibrida(payload.ticket, payload.solucion_detallada)
 
 if __name__ == "__main__":
     import uvicorn
-    # Importante: host="0.0.0.0" ayuda a evitar problemas de binding local
+    # host="0.0.0.0" permite conexiones desde cualquier interfaz de red
     uvicorn.run(app, host="0.0.0.0", port=8000)
