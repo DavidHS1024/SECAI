@@ -254,7 +254,7 @@ const analizarInsights = async () => {
     addLog(index, '🚀', 'Conectando con SECAI o3 Engine...', 'info');
 
     try {
-      const response = await fetch('[http://127.0.0.1:8000/api/investigacion](http://127.0.0.1:8000/api/investigacion)', {
+      const response = await fetch('http://127.0.0.1:8000/api/investigacion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ticket)

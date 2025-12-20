@@ -10,10 +10,8 @@ from services import mock_data
 # ==============================================================================
 # CONFIGURACIÓN DE MODELOS
 # ==============================================================================
-# Cambiamos a gpt-4o para velocidad máxima en pruebas. 
-# Cambia a 'gpt-5.2' (o3) solo para producción final.
-MODELO_RAZONAMIENTO = 'gpt-5.2'
-#MODELO_RAZONAMIENTO = 'gpt-4o' 
+# Usamos gpt-4o para que el bucle sea rápido (10-15s) durante la demo.
+MODELO_RAZONAMIENTO = 'gpt-4o' 
 MODELO_RAPIDO = 'gpt-4o-mini'
 
 # ==============================================================================
@@ -144,8 +142,7 @@ def _crear_prompt_generacion(ticket, contexto_web):
     - NO uses encabezados gigantes (#), usa negritas para subtítulos.
     
     FUENTES BIBLIOGRÁFICAS:
-    - Incluye SOLO links reales encontrados en el contexto web.
-    - Si no hay links válidos, deja la lista de fuentes vacía. NO inventes URLs.
+    - Incluye SOLO links reales del contexto web. Si no hay, deja la lista vacía.
     """
 
 def _crear_prompt_auditoria(ticket, solucion_obj):
@@ -154,9 +151,7 @@ def _crear_prompt_auditoria(ticket, solucion_obj):
     PROBLEMA: {ticket['problema']}
     SOLUCIÓN: {solucion_obj.model_dump_json()}
     
-    CRITERIO (Min 90/100): 
-    - Penaliza (-20) si es puro texto sin código/comandos.
-    - Penaliza (-10) si la seguridad es genérica.
+    CRITERIO (Min 90/100): Penaliza si es vago o inseguro.
     TAREA: Evalúa y da puntaje.
     """
 
@@ -165,13 +160,17 @@ def _crear_prompt_refinamiento(solucion_ant, auditoria):
     Actúa como Tech Lead.
     SITUACIÓN: Rechazada (Score: {auditoria.score}).
     CRÍTICAS: {json.dumps(auditoria.riesgos_detectados)}
-    TAREA: Corrige la solución manteniendo el formato estricto.
+    TAREA: Corrige la solución.
     """
 
 # --- GENERADOR MAESTRO CON STREAMING CORREGIDO (\n) ---
 
 def investigar_solucion_stream(ticket: Dict) -> Generator[str, None, None]:
+    # IMPORTANTE: El backend debe devolver un generador SINCRONO o ASINCRONO
+    # FastAPI maneja ambos, pero aquí usaremos yield estándar.
+    
     if not IA_ACTIVA:
+        # \n es VITAL para que el frontend detecte el fin del mensaje
         yield json.dumps({"type": "error", "message": "IA Offline"}) + "\n"
         return
 
@@ -183,7 +182,7 @@ def investigar_solucion_stream(ticket: Dict) -> Generator[str, None, None]:
     solucion_actual = None
     ultimo_score = 0
     intentos = 0
-    MAX_INTENTOS = 2 # 2 Intentos es suficiente para una demo rápida
+    MAX_INTENTOS = 2 # Reducimos intentos para agilidad en demo
     SCORE_OBJETIVO = 90
     auditoria_final = None
 
@@ -235,20 +234,9 @@ def investigar_solucion_stream(ticket: Dict) -> Generator[str, None, None]:
             "investigacion": solucion_actual.model_dump(),
             "auditoria": auditoria_final.model_dump()
         }
+        # \n CRÍTICO AQUÍ TAMBIÉN
         yield json.dumps({"type": "result", "data": paquete}) + "\n"
 
     except Exception as e:
         print(f"ERROR: {e}")
         yield json.dumps({"type": "error", "message": str(e)}) + "\n"
-
-# Helpers
-def limpiar_json(texto):
-    try: return json.loads(texto.replace("```json", "").replace("```", "").strip())
-    except: return None
-    
-def generar_interiorizacion_hibrida(ticket, solucion_detallada):
-    prompt = f"Rol: UX Writer. Post FB sobre: {ticket['titulo']}. JSON: {{'texto_post': '...', 'prompt_imagen_en': '...'}}"
-    try:
-        res = client.chat.completions.create(model=MODELO_RAPIDO, messages=[{"role":"user","content":prompt}], response_format={"type":"json_object"}).choices[0].message.content
-        return limpiar_json(res)
-    except: return {"texto_post": "Error", "url_imagen": None}
